@@ -7,6 +7,31 @@
 import CoreBluetooth
 import Foundation
 
+// Define the Queue class here
+private class Queue<T> {
+    private var elements: [T] = []
+
+    func enqueue(_ element: T) {
+        elements.append(element)
+    }
+
+    func dequeue() -> T? {
+        return isEmpty ? nil : elements.removeFirst()
+    }
+
+    func peek() -> T? {
+        return elements.first
+    }
+
+    var isEmpty: Bool {
+        return elements.isEmpty
+    }
+
+    var count: Int {
+        return elements.count
+    }
+}
+
 public class BlePeripheralPlugin: NSObject, FlutterPlugin {
     public static func register(with registrar: FlutterPluginRegistrar) {
         var messenger: FlutterBinaryMessenger? = nil
@@ -24,7 +49,11 @@ public class BlePeripheralPlugin: NSObject, FlutterPlugin {
 private class BlePeripheralDarwin: NSObject, BlePeripheralChannel, CBPeripheralManagerDelegate {
     var bleCallback: BleCallback
     lazy var peripheralManager: CBPeripheralManager = .init(delegate: self, queue: nil, options: nil)
-    var cbCentrals = [CBCentral]()
+    var cbCentrals = [CBCentral]()    
+
+    // use these to manage updateValue that is waiting for transmit queue to be ready
+    let queue = Queue<(characteristicId: String, deviceId: String?, value: FlutterStandardTypedData)>()
+    let semaphore = DispatchSemaphore(value: 1)
 
     init(bleCallback: BleCallback) {
         self.bleCallback = bleCallback
@@ -108,21 +137,37 @@ private class BlePeripheralDarwin: NSObject, BlePeripheralChannel, CBPeripheralM
         if !containsDevice { cbCentrals.append(central) }
     }
 
+    // Helper method to attempt sending value to characteristic
+    private func tryUpdateValue(characteristicId: String, value: FlutterStandardTypedData, deviceId: String?) -> Bool {
+        guard let char: CBMutableCharacteristic = characteristicId.findCharacteristic() else {
+            return false
+        }
+        var sent = false
+        if let deviceId = deviceId {
+            if let centralDevice = cbCentrals.first(where: { $0.identifier.uuidString == deviceId }) {
+                sent = peripheralManager.updateValue(value.toData(), for: char, onSubscribedCentrals: [centralDevice])
+            }
+        } else {
+            sent = peripheralManager.updateValue(value.toData(), for: char, onSubscribedCentrals: nil)
+        }
+        return sent
+    }
+
     func updateCharacteristic(characteristicId: String, value: FlutterStandardTypedData, deviceId: String?) throws {
-        let char: CBMutableCharacteristic? = characteristicId.findCharacteristic()
-        if char == nil {
+        guard characteristicId.findCharacteristic() != nil else {
             throw CustomError.notFound("\(characteristicId) characteristic not found")
         }
         if let deviceId = deviceId {
-            let centralDevice: CBCentral? = cbCentrals.first(where: { device in
-                deviceId == device.identifier.uuidString
-            })
-            if centralDevice == nil {
+            guard cbCentrals.contains(where: { $0.identifier.uuidString == deviceId }) else {
                 throw CustomError.notFound("\(deviceId) device not found")
             }
-            peripheralManager.updateValue(value.toData(), for: char!, onSubscribedCentrals: [centralDevice!])
-        } else {
-            peripheralManager.updateValue(value.toData(), for: char!, onSubscribedCentrals: nil)
+        }
+
+        let sent = tryUpdateValue(characteristicId: characteristicId, value: value, deviceId: deviceId)
+        if !sent {
+            semaphore.wait()
+            queue.enqueue((characteristicId: characteristicId, deviceId: deviceId, value: value))
+            semaphore.signal()
         }
     }
 
@@ -200,6 +245,26 @@ private class BlePeripheralDarwin: NSObject, BlePeripheralChannel, CBPeripheralM
                     self.peripheralManager.respond(to: req, withResult: .requestNotSupported)
                 }
             }
+        }
+    }
+
+    internal nonisolated func peripheralManagerIsReady(toUpdateSubscribers peripheral: CBPeripheralManager) {
+        print("Peripheral Manager is ready to update subscribers.")
+        print("Queue size: \(queue.count)")
+        // try to process each item in the queue
+        for _ in 0..<queue.count {
+            semaphore.wait()
+            if let item = queue.dequeue() {
+                let sent = tryUpdateValue(characteristicId: item.characteristicId, value: item.value, deviceId: item.deviceId)
+                if !sent {
+                    print("Failed to update for characteristic \(item.characteristicId). Re-enqueuing for retry.")
+                    queue.enqueue(item)
+                } else {
+                    let hexBytes = item.value.data.map { String(format: "%02x", $0) }.joined()
+                    print("Successfully updated characteristic \(item.characteristicId) with data: \(hexBytes)")
+                }
+            }
+            semaphore.signal()
         }
     }
 }
