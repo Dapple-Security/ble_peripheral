@@ -296,9 +296,7 @@ class BlePeripheralPlugin : FlutterPlugin, BlePeripheralChannel, ActivityAware {
                         if (device.bondState == BluetoothDevice.BOND_NONE) {
                             Log.v(TAG,"blePeripheral: onConnectionStateChange: ${device.address} | BOND_NONE")
                             // Wait for bonding
-                            listOfDevicesWaitingForBond.add(device.address)
-                            // disabling to test if Android will automatically bond
-                            //device.createBond()
+                            listOfDevicesWaitingForBond.add(device.address)                            
                         } else if (device.bondState == BluetoothDevice.BOND_BONDING) {
                             Log.v(TAG,"blePeripheral: onConnectionStateChange: ${device.address} | BOND_BONDING")
                             // Device is in bonding state, wait for bond state change                            
