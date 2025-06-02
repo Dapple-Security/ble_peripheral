@@ -287,23 +287,23 @@ class BlePeripheralPlugin : FlutterPlugin, BlePeripheralChannel, ActivityAware {
                 status: Int,
                 newState: Int,
             ) {
-                Log.e(TAG,"blePeripheral: onConnectionStateChange: logging: ${device.address} | $status -> $newState");
-                Log.e(TAG,"blePeripheral: onConnectionStateChange: ${device.address} | BOND_STATE: ${device.bondState}")
+                Log.i(TAG,"blePeripheral: onConnectionStateChange: logging: ${device.address} | $status -> $newState");
+                Log.i(TAG,"blePeripheral: onConnectionStateChange: ${device.address} | BOND_STATE: ${device.bondState}")
                 super.onConnectionStateChange(device, status, newState)                
                 when (newState) {
                     BluetoothProfile.STATE_CONNECTED -> {
                         Log.e(TAG,"blePeripheral: onConnectionStateChange: ${device.address} | STATE_CONNECTED")
                         if (device.bondState == BluetoothDevice.BOND_NONE) {
-                            Log.e(TAG,"blePeripheral: onConnectionStateChange: ${device.address} | BOND_NONE")
+                            Log.v(TAG,"blePeripheral: onConnectionStateChange: ${device.address} | BOND_NONE")
                             // Wait for bonding
                             listOfDevicesWaitingForBond.add(device.address)
                             // disabling to test if Android will automatically bond
                             //device.createBond()
                         } else if (device.bondState == BluetoothDevice.BOND_BONDING) {
-                            Log.e(TAG,"blePeripheral: onConnectionStateChange: ${device.address} | BOND_BONDING")
+                            Log.v(TAG,"blePeripheral: onConnectionStateChange: ${device.address} | BOND_BONDING")
                             // Device is in bonding state, wait for bond state change                            
                         } else if (device.bondState == BluetoothDevice.BOND_BONDED) {
-                            Log.e(TAG,"blePeripheral: onConnectionStateChange: ${device.address} | BOND_BONDED")
+                            Log.v(TAG,"blePeripheral: onConnectionStateChange: ${device.address} | BOND_BONDED")
                             handler?.post {
                                 gattServer?.connect(device, true)
                             }                            
@@ -320,14 +320,14 @@ class BlePeripheralPlugin : FlutterPlugin, BlePeripheralChannel, ActivityAware {
                     }
 
                     BluetoothProfile.STATE_DISCONNECTED -> {
-                        Log.e(TAG,"blePeripheral: onConnectionStateChange: ${device.address} | STATE_DISCONNECTED")
+                        Log.i(TAG,"blePeripheral: onConnectionStateChange: ${device.address} | STATE_DISCONNECTED")
                         val deviceAddress = device.address
                         synchronized(bluetoothDevicesMap) { bluetoothDevicesMap.remove(deviceAddress) }
                         onConnectionUpdate(device, status, newState)
                     }
 
                     else -> {
-                        Log.e(TAG,"blePeripheral: onConnectionStateChange: ${device.address} | STATE_OTHER")                        
+                        Log.i(TAG,"blePeripheral: onConnectionStateChange: ${device.address} | STATE_OTHER")                        
                     }
                 }
             }
