@@ -69,15 +69,11 @@ extension BleCharacteristic {
             value: value?.toData(),
             permissions: combinedPermissions
         )
-        let mappedDescriptors = descriptors?.compactMap { desc in
+        
+        char.descriptors = descriptors?.compactMap { desc in
             desc.toCBMutableDescriptor()
         }
-        // Only set descriptors if there are explicit ones to add.
-        // Setting descriptors to nil or an empty array prevents CoreBluetooth
-        // from auto-generating the CCCD for notify/indicate characteristics.
-        if let mappedDescriptors, !mappedDescriptors.isEmpty {
-            char.descriptors = mappedDescriptors
-        }
+
         // Add local reference of this characteristic
         characteristicsList.removeAll { $0.uuid.uuidString.lowercased() == char.uuid.uuidString.lowercased() }
         characteristicsList.append(char)
